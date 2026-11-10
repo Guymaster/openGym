@@ -1452,6 +1452,20 @@ export const useStore = create((set, get) => {
     saveNow() {
       return MOBILE ? nativePersist(true) : Promise.resolve()
     },
+    // Cloud folder sync (lib/cloud-sync.js): a copy read from the shared file, merged into this
+    // one the way two devices merge through a server. The workout running here stays this
+    // device's. Returns the copy now in the store; it is only saved when the merge changed it.
+    cloudMerge(remote) {
+      if (sandbox) return get().S
+      const local = get().S
+      if (!remote || typeof remote !== 'object') return local
+      const merged = Object.assign(clone(DEF), mergeStates(local, remote))
+      merged.active = carryActive(local, merged)
+      if (refillIfComplete(merged)) merged.edited = { ...(merged.edited || {}), queue: Math.max(Date.now(), highestStamp(merged) + 1) }
+      if (sameCopy(merged, local)) return local
+      persist(merged, false)
+      return get().S
+    },
     update(mut, push = true) {
       const prev = get().S
       // Under test, every change proves it left the previous state as it was: the draft shares

@@ -64,6 +64,10 @@ android {
         fdroid {
             dimension = "channel"
             buildConfigField "String", "CHANNEL", '"fdroid"'
+            // Fork with cloud folder sync (Koofr, WebDAV): its own applicationId, so it installs
+            // beside the official app and is never replaced by one of its updates.
+            applicationIdSuffix ".koofr"
+            versionNameSuffix "-koofr"
             // The gym reminder needs no Play services (the platform's proximity alerts).
             buildConfigField "boolean", "BACKGROUND_LOCATION", "true"
         }

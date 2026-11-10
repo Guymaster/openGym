@@ -33,7 +33,7 @@ import { useWakeLock } from './lib/wakelock.js'
 import { installViewportGuard } from './lib/viewport-guard.js'
 import { installChipDrag } from './lib/hchips.js'
 import { syncPushSubscription } from './lib/push.js'
-import { MOBILE, nativePlatform } from './lib/mobile.js'
+import { MOBILE, nativePlatform, onAppActive } from './lib/mobile.js'
 import { isOn } from './lib/modules.js'
 import { useTour, tourState, openTour, readTour, shouldOffer, resumeAt } from './lib/tour.js'
 import { exitWorkoutEdit, startFlow, beginWorkout, bwSheet } from './sheets.jsx'
@@ -482,6 +482,12 @@ export default function App() {
     startWidgetSync({ useStore }).then(keep).catch(() => {})
     startLiveActivitySync({ useStore, useUI }).then(keep).catch(() => {})
     return () => { gone.v = true; stops.forEach(fn => fn()) }
+  }, [])
+  // Phone app without a server: sync through a WebDAV folder (Koofr...) when it is set up
+  // (lib/cloud-sync.js, Settings → Data & backup).
+  useEffect(() => {
+    if (!MOBILE) return
+    import('./lib/cloud-sync.js').then(m => m.startCloudSync(useStore, { onAppActive })).catch(() => {})
   }, [])
   // Phone app: a tap on a widget opens the screen it is about (lib/widget-links.js).
   useEffect(() => {
