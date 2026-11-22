@@ -86,6 +86,9 @@ export async function webdavRequest({ url, method, headers = {}, body }) {
 export class CloudError extends Error {
   constructor(code, status) { super(code); this.code = code; this.status = status }
 }
+// What went wrong, in a few words, for the settings screen: the HTTP status, or the message of
+// a request that never went out.
+export const errorDetail = e => (e instanceof CloudError ? (e.status ? `HTTP ${e.status}` : '') : String(e?.message || e || '')).slice(0, 160)
 const fail = (res) => {
   if (res.status === 401 || res.status === 403) throw new CloudError('auth', res.status)
   throw new CloudError('http', res.status)
@@ -128,10 +131,14 @@ export async function syncOnce({ conf, password, local, merge, request = webdavR
     else if (!remote) headers['If-None-Match'] = '*'
     let put = await request({ url, method: 'PUT', headers, body: JSON.stringify(mine) })
     // A first write into a folder that does not exist yet: make it, then write again.
+    // Android's HTTP stack refuses WebDAV's own methods (MKCOL, PROPFIND) before anything is
+    // sent: there the folder has to exist already, and the person is told so.
     if (!remote && (put.status === 409 || put.status === 404)) {
-      const mk = await request({ url: folderUrl(conf), method: 'MKCOL', headers: auth })
-      if (mk.status >= 400 && mk.status !== 405) fail(mk)
+      let mk = null
+      try { mk = await request({ url: folderUrl(conf), method: 'MKCOL', headers: auth }) } catch { throw new CloudError('nofolder', put.status) }
+      if (mk.status >= 400 && mk.status !== 405) throw new CloudError('nofolder', mk.status)
       put = await request({ url, method: 'PUT', headers, body: JSON.stringify(mine) })
+      if (put.status === 409 || put.status === 404) throw new CloudError('nofolder', put.status)
     }
     if (put.status === 412) continue   // another device wrote in between: read its copy, merge again
     if (put.status >= 200 && put.status < 300) return { wrote: true, read: !!remote }
@@ -140,10 +147,11 @@ export async function syncOnce({ conf, password, local, merge, request = webdavR
   throw new CloudError('busy', 412)
 }
 
-// Checks the address and login before they are saved: a PROPFIND of the base folder.
+// Checks the address and login before they are saved: a GET of the sync file (a plain GET,
+// since Android cannot send PROPFIND). There or not yet (404), the login went through.
 export async function testConnection({ conf, password, request = webdavRequest }) {
-  const res = await request({ url: String(conf.url || '').replace(/\/+$/, '') + '/', method: 'PROPFIND', headers: { Authorization: basic(conf.user, password), Depth: '0' } })
-  if (res.status === 207 || res.status === 200) return true
+  const res = await request({ url: fileUrl(conf), method: 'GET', headers: { Authorization: basic(conf.user, password), 'Cache-Control': 'no-cache' } })
+  if (res.status === 200 || res.status === 404) return true
   fail(res)
 }
 
@@ -180,11 +188,11 @@ export function syncNow() {
         local: () => store.getState().S,
         merge: remote => { merging = true; try { return store.getState().cloudMerge(remote) } finally { merging = false } }
       })
-      writeConfig({ last: Date.now(), lastError: '' })
+      writeConfig({ last: Date.now(), lastError: '', lastDetail: '' })
       return r
     } catch (e) {
       const code = e instanceof CloudError ? e.code : 'network'
-      writeConfig({ lastError: code })
+      writeConfig({ lastError: code, lastDetail: errorDetail(e) })
       return { error: code }
     } finally {
       setBusy(false)

@@ -3676,4 +3676,5 @@ export default {
   "Turn off cloud sync": "Désactiver la synchro cloud",
   "Set up Koofr sync": "Configurer la synchro Koofr",
   "Or another WebDAV drive": "Ou un autre stockage WebDAV",
+  "This folder does not exist in the cloud yet. Create it there (in the Koofr app), or leave the folder empty.": "Ce dossier n’existe pas encore dans le cloud. Crée-le dans l’app Koofr, ou laisse le champ Dossier vide.",
 }

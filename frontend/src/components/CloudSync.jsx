@@ -4,7 +4,7 @@ import { useUI } from '../store/useUI.js'
 import { Section, Row, Button } from './ui.jsx'
 import {
   readConfig, writeConfig, onConfigChange, getPassword, setPassword, forgetCloud,
-  testConnection, syncNow, syncStatus, onSyncStatus, KOOFR_URL, CloudError
+  testConnection, syncNow, syncStatus, onSyncStatus, KOOFR_URL, CloudError, errorDetail
 } from '../lib/cloud-sync.js'
 
 /* Settings → Data & backup → "Sync with a cloud folder" (lib/cloud-sync.js): the phone and the
@@ -16,6 +16,7 @@ const errStyle = { color: 'var(--red)', marginTop: 8 }
 export function cloudErrorText(code) {
   return code === 'auth' ? t('The login was refused. Check the e-mail and the app password.')
     : code === 'corrupt' ? t('The sync file in the folder is damaged. Move it away to start a new one.')
+    : code === 'nofolder' ? t('This folder does not exist in the cloud yet. Create it there (in the Koofr app), or leave the folder empty.')
     : code === 'busy' ? t('Another device kept writing at the same time. It will try again shortly.')
     : code === 'http' ? t('The cloud answered with an error. Check the address and the folder.')
     : t('The cloud could not be reached. It will try again when you are online.')
@@ -55,9 +56,9 @@ function CloudSetupSheet({ close }) {
       writeConfig({ ...conf, enabled: true, lastError: '' })
       close()
       const r = await syncNow()
-      useUI.getState().toast(r?.error ? cloudErrorText(r.error) : t('Cloud sync is on.'))
-    } catch (e) {
-      setErr(cloudErrorText(e instanceof CloudError ? e.code : 'network'))
+      useUI.getState().toast(r?.error ? cloudErrorText(r.error) : t('Cloud sync is on.'))    } catch (e) {
+      const detail = errorDetail(e)
+      setErr(cloudErrorText(e instanceof CloudError ? e.code : 'network') + (detail ? ` (${detail})` : ''))
     } finally { setBusy(false) }
   }
 
@@ -100,7 +101,7 @@ export function CloudSyncSection() {
     footer={on ? null : t('Koofr, Nextcloud or any WebDAV drive. Your phone and your tablet then share the same workouts, without a server.')}>
     {on ? <>
       <Row icon="cloud" iconTint="var(--indigo)" title={conf.folder ? `${conf.user} · ${conf.folder}` : conf.user}
-        subtitle={busy ? t('Syncing…') : conf.lastError ? cloudErrorText(conf.lastError) : conf.last ? t('Last sync: {0}', fmtTime(conf.last)) : t('Not synced yet')}
+        subtitle={busy ? t('Syncing…') : conf.lastError ? cloudErrorText(conf.lastError) + (conf.lastDetail ? ` (${conf.lastDetail})` : '') : conf.last ? t('Last sync: {0}', fmtTime(conf.last)) : t('Not synced yet')}
         accessory="chevron" onClick={openCloudSetup} />
       <Row icon="reset" iconTint="var(--blue)" title={t('Sync now')} onClick={now} />
       <Row icon="cloudSlash" iconTint="var(--red)" title={t('Turn off cloud sync')} danger onClick={turnOff} />

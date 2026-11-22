@@ -3,7 +3,7 @@ import { syncOnce, fileUrl, folderUrl, testConnection, KOOFR_URL, CloudError } f
 import { mergeStates } from './sync-merge.js'
 
 // A WebDAV drive in memory: files with ETags, folders, and the conditions syncOnce sends.
-function fakeDrive({ password = 'pw', etags = true } = {}) {
+function fakeDrive({ password = 'pw', etags = true, android = false } = {}) {
   const files = new Map()
   const dirs = new Set([KOOFR_URL])
   let n = 0
@@ -11,6 +11,8 @@ function fakeDrive({ password = 'pw', etags = true } = {}) {
   const dirOf = url => url.slice(0, url.lastIndexOf('/'))
   const request = async ({ url, method, headers = {}, body }) => {
     log.push(method)
+    // Android's HttpURLConnection: anything past the standard verbs throws before it is sent.
+    if (android && !['GET', 'PUT', 'POST', 'DELETE', 'HEAD', 'OPTIONS'].includes(method)) throw new Error(`Invalid HTTP method: ${method}`)
     if (headers.Authorization !== 'Basic ' + btoa('me@example.com:' + password)) return { status: 401, headers: {}, text: '' }
     const f = files.get(url)
     if (method === 'GET') return f ? { status: 200, headers: etags ? { ETag: f.etag } : {}, text: f.body } : { status: 404, headers: {}, text: '' }
@@ -120,5 +122,23 @@ describe('syncOnce', () => {
     await expect(syncOnce({ conf, password: 'pw', local: phone.local, merge: phone.merge, request: drive.request }))
       .rejects.toMatchObject({ code: 'corrupt' })
     expect(drive.files.get(fileUrl(conf)).body).toBe('not json')
+  })
+
+  it('on Android, connects with a plain GET and writes into an existing folder', async () => {
+    const drive = fakeDrive({ android: true })
+    drive.write(fileUrl(conf) + '.keep', {})   // the folder exists
+    await expect(testConnection({ conf, password: 'pw', request: drive.request })).resolves.toBe(true)
+    await expect(testConnection({ conf, password: 'bad', request: drive.request })).rejects.toMatchObject({ code: 'auth' })
+    const phone = device({ _ts: 1, workouts: [hist(1, 1)] })
+    const r = await syncOnce({ conf, password: 'pw', local: phone.local, merge: phone.merge, request: drive.request })
+    expect(r.wrote).toBe(true)
+    expect(drive.log).not.toContain('PROPFIND')
+  })
+
+  it('on Android, says the folder is missing instead of failing as offline', async () => {
+    const drive = fakeDrive({ android: true })
+    const phone = device({ _ts: 1, workouts: [hist(1, 1)] })
+    await expect(syncOnce({ conf, password: 'pw', local: phone.local, merge: phone.merge, request: drive.request }))
+      .rejects.toMatchObject({ code: 'nofolder' })
   })
 })
